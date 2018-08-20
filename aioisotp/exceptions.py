@@ -1,0 +1,4 @@
+
+
+class ISOTPError(Exception):
+    pass
