@@ -14,8 +14,11 @@ class ISOTPTransport(asyncio.Transport):
     logger = LOGGER
 
     def __init__(self, protocol, send_cb, block_size=32, st_min=0,
-                 max_wft=0, extra=None):
+                 max_wft=0, loop=None, extra=None):
         super().__init__(extra)
+        if send_cb is None:
+            # Let send_raw be a no-op
+            send_cb = lambda data: None
         self.send_raw = send_cb
         self.block_size = block_size
         self.st_min = st_min
@@ -32,7 +35,10 @@ class ISOTPTransport(asyncio.Transport):
         self._send_st_min = None
         self._send_wf_count = 0
         self._closing = False
-        self._loop = asyncio.get_event_loop()
+        if loop is not None:
+            self._loop = loop
+        else:
+            self._loop = asyncio.get_event_loop()
         self._loop.call_soon(self._protocol.connection_made, self)
 
     def set_protocol(self, protocol):
@@ -192,19 +198,31 @@ class ISOTPTransport(asyncio.Transport):
             # Last message sent, clean up
             self._end_send()
 
-        elif self._send_block_size and self._send_block_count >= self._send_block_size:
+        elif self._send_block_count == self._send_block_size:
             # Wait for flow control message
             self._send_block_count = 0
             self._send_wf_count = 0
 
         else:
             # Send next message
-            if self._send_st_min < 0x80:
+            if self._send_st_min == 0:
+                wait = 0
+            elif self._send_st_min < 0x80:
                 wait = self._send_st_min * 1e-3
             elif 0xF1 <= self._send_st_min <= 0xF9:
                 wait = (self._send_st_min - 0xF0) * 1e-6
             else:
                 wait = 0.127
+
+            # Normally the event loop does not bother waiting for tasks
+            # scheduled closer in time than the internal clock resolution.
+            # In order to honor the requested minimum separation time, we make
+            # sure the wait is long enough to not be skipped.
+            # On Windows this is usually ~16 ms!
+            if wait and hasattr(self._loop, '_clock_resolution'):
+                wait = max(wait, self._loop._clock_resolution + 0.001)
+
+            # Call ourselves after the wait
             self._loop.call_later(wait, self._send_cf)
 
     def _feed_fc(self, data):

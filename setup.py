@@ -19,7 +19,7 @@ setup(
     author="Christian Sandberg",
     author_email="christiansandberg@me.com",
     description="Asyncio implementation of ISO-TP (ISO 15765-2)",
-    keywords="CAN",
+    keywords="CAN ISO-TP 15765",
     long_description=description,
     license="MIT",
     platforms=["any"],

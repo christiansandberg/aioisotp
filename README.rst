@@ -16,7 +16,7 @@ Why asynchronous?
 
 Asynchronous programming simplifies some possible use-cases:
 
-* Full duplex receiving and transmitting on one connection.
+* Full duplex receiving and transmitting on a single connection.
 * Communicate on multiple connections simultaneously.
 * Functional addressing where one request is sent out and all nodes respond,
   then processing the responses as they arrive.
@@ -33,6 +33,7 @@ Quick start
     import asyncio
     import aioisotp
 
+
     class EchoServer(asyncio.Protocol):
 
         def connection_made(self, transport):
@@ -41,6 +42,7 @@ Quick start
         def data_received(self, data):
             # Echo back the same data
             self._transport.write(data)
+
 
     async def main():
         network = aioisotp.ISOTPNetwork(
@@ -57,6 +59,7 @@ Quick start
             response = await reader.read(4095)
             assert response == b'Hello world!'
 
+
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(main())
@@ -69,7 +72,9 @@ UDS
 
 This package is meant to enable the use of other protocols that require
 ISO-TP. One of the most common is UDS. A third party library like udsoncan_
-can be used to encode and decode payloads::
+can be used to encode and decode payloads.
+
+.. code:: python
 
     import aioisotp
     import udsoncan
