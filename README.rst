@@ -61,10 +61,7 @@ Quick start
 
 
     loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    finally:
-        loop.close()
+    loop.run_until_complete(main())
 
 
 UDS
@@ -90,7 +87,7 @@ can be used to encode and decode payloads.
 
     # Wait for response and decode the payload
     payload = await reader.read(4095)
-    response = udsoncan.Respose.from_payload(payload)
+    response = udsoncan.Response.from_payload(payload)
 
     print(response)
     print(response.data)

@@ -59,19 +59,21 @@ class ISOTPTransport(asyncio.Transport):
     def can_write_eof(self):
         return False
 
-    def feed_can_data(self, data):
-        if self._closing:
-            return
+    def get_write_buffer_size(self):
+        return sum(len(buf) for buf in self._send_queue)
 
+    def feed_can_data(self, data):
         pci_type = data[0] >> 4
-        if pci_type == SINGLE_FRAME:
+        if pci_type == FLOW_CONTROL_FRAME:
+            self._feed_fc(data)
+        elif self._closing:
+            pass
+        elif pci_type == SINGLE_FRAME:
             self._feed_sf(data)
         elif pci_type == FIRST_FRAME:
             self._feed_ff(data)
         elif pci_type == CONSECUTIVE_FRAME:
             self._feed_cf(data)
-        elif pci_type == FLOW_CONTROL_FRAME:
-            self._feed_fc(data)
 
     def _reset_recv(self):
         self._recv_buffer.clear()
@@ -135,13 +137,13 @@ class ISOTPTransport(asyncio.Transport):
         self._send_queue.append(bytearray(payload))
         if len(self._send_queue) == 1:
             # Nothing else is sending
+            # Ask protocol to wait with next payload if possible
+            self._protocol.pause_writing()
             self._start_send()
 
     def _start_send(self):
-        # Ask protocol to wait with next payload if possible
-        self._protocol.pause_writing()
-
         buffer = self._send_queue[0]
+        self.logger.debug('Starting transfer of %d bytes', len(buffer))
         if len(buffer) < 8:
             self._send_sf()
         else:
@@ -178,15 +180,15 @@ class ISOTPTransport(asyncio.Transport):
         self.logger.debug('Sending first frame')
         self.send_raw(data)
 
+        self.logger.debug('Waiting for flow control frame...')
         self._send_seq_no = 1
         self._send_block_count = 0
 
     def _send_cf(self):
         buffer = self._send_queue[0]
-        frame_payload = buffer[0:7]
         data = bytearray()
         data.append((CONSECUTIVE_FRAME << 4) + (self._send_seq_no & 0xF))
-        data.extend(frame_payload)
+        data.extend(buffer[0:7])
 
         self.send_raw(data)
 
@@ -199,9 +201,9 @@ class ISOTPTransport(asyncio.Transport):
             self._end_send()
 
         elif self._send_block_count == self._send_block_size:
-            # Wait for flow control message
             self._send_block_count = 0
             self._send_wf_count = 0
+            self.logger.debug('Waiting for flow control frame...')
 
         else:
             # Send next message
@@ -245,6 +247,7 @@ class ISOTPTransport(asyncio.Transport):
             self.logger.error('Invalid flow status')
 
     def _end_send(self):
+        self.logger.debug('Transfer complete!')
         # Remove the transmission from the queue
         if self._send_queue:
             del self._send_queue[0]
@@ -253,9 +256,8 @@ class ISOTPTransport(asyncio.Transport):
             # Yes, start another send
             self._loop.call_soon(self._start_send)
         else:
-            if not self._closing:
-                # Tell protocol that it can send more payloads
-                self._protocol.resume_writing()
-            else:
+            # Tell protocol that it can send more payloads
+            self._protocol.resume_writing()
+            if self._closing:
                 # Everything has been sent and we should close down
                 self._protocol.connection_lost(None)

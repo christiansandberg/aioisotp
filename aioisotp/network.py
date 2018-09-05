@@ -14,18 +14,21 @@ LOGGER = logging.getLogger(__name__)
 
 class ISOTPNetwork(can.Listener):
 
-    def __init__(self, bus=None, block_size=16, st_min=0, max_wft=0, **config):
+    def __init__(self, bus=None, block_size=16, st_min=0, max_wft=0,
+                 loop=None, **config):
         self.bus = bus
         self.block_size = block_size
         self.st_min = st_min
         self.max_wft = max_wft
         self.config = config
         self._rxids = {}
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self._loop = loop
 
     def open(self):
         self.bus = can.Bus(**self.config)
-        loop = asyncio.get_event_loop()
-        self.notifier = can.Notifier(self.bus, [self], 0.1, loop=loop)
+        self.notifier = can.Notifier(self.bus, [self], 0.1, loop=self._loop)
         return self
 
     def close(self):
@@ -53,16 +56,16 @@ class ISOTPNetwork(can.Listener):
         protocol = protocol_factory()
         send_cb = lambda data: self.send_raw(txid, data)
         transport = ISOTPTransport(protocol, send_cb,
-                                   self.block_size, self.st_min, self.max_wft)
+                                   self.block_size, self.st_min, self.max_wft,
+                                   loop=self._loop)
         self._rxids[rxid] = transport
         return transport, protocol
 
     async def open_connection(self, rxid, txid):
-        loop = asyncio.get_event_loop()
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
         transport, _ = await self.create_connection(lambda: protocol, rxid, txid)
-        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+        writer = asyncio.StreamWriter(transport, protocol, reader, self._loop)
         return reader, writer
 
     def send(self, txid, payload):
@@ -74,11 +77,12 @@ class ISOTPNetwork(can.Listener):
         self.send_raw(txid, data)
 
     def send_raw(self, txid, data):
-        LOGGER.debug('Sending raw frame: %s', binascii.hexlify(data))
-        fc = can.Message(arbitration_id=txid,
-                         extended_id=txid > 0x7FF,
-                         data=data)
-        self.bus.send(fc)
+        LOGGER.debug('Sending raw frame: ID 0x%X - %s',
+                     txid, binascii.hexlify(data).decode())
+        msg = can.Message(arbitration_id=txid,
+                          extended_id=txid > 0x7FF,
+                          data=data)
+        self.bus.send(msg)
 
     def on_message_received(self, msg):
         if msg.is_error_frame or msg.is_remote_frame:
@@ -87,3 +91,7 @@ class ISOTPNetwork(can.Listener):
         transport = self._rxids.get(msg.arbitration_id)
         if transport is not None:
             transport.feed_can_data(msg.data)
+
+    def on_error(self, exc):
+        for transport in self._rxids.values():
+            transport.get_protocol().connection_lost(exc)
