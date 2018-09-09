@@ -13,7 +13,7 @@ class ISOTPTransport(asyncio.Transport):
 
     logger = LOGGER
 
-    def __init__(self, protocol, send_cb, block_size=32, st_min=0,
+    def __init__(self, protocol, send_cb, block_size=0, st_min=0,
                  max_wft=0, loop=None, extra=None):
         super().__init__(extra)
         if send_cb is None:
@@ -184,6 +184,25 @@ class ISOTPTransport(asyncio.Transport):
         self._send_seq_no = 1
         self._send_block_count = 0
 
+    def _feed_fc(self, data):
+        byte1, block_size, st_min = struct.unpack_from('BBB', data)
+        fs = byte1 & 0xF
+        if fs == CONTINUE_TO_SEND:
+            self.logger.debug('block_size = %d, st_min = %d', block_size, st_min)
+            self._send_block_size = block_size
+            self._send_st_min = st_min
+            # Ready to send next message
+            self._send_cf()
+        elif fs == WAIT:
+            # Do nothing
+            self._send_wf_count += 1        
+            if self._send_wf_count > self.max_wft:
+                self.logger.error('Wait frame overrun')
+        elif fs == OVERFLOW:
+            self.logger.error('Buffer overflow/abort')
+        else:
+            self.logger.error('Invalid flow status')
+
     def _send_cf(self):
         buffer = self._send_queue[0]
         data = bytearray()
@@ -226,25 +245,6 @@ class ISOTPTransport(asyncio.Transport):
 
             # Call ourselves after the wait
             self._loop.call_later(wait, self._send_cf)
-
-    def _feed_fc(self, data):
-        byte1, block_size, st_min = struct.unpack_from('BBB', data)
-        fs = byte1 & 0xF
-        if fs == CONTINUE_TO_SEND:
-            self.logger.debug('bs = %d, st_min = %d', block_size, st_min)
-            self._send_block_size = block_size
-            self._send_st_min = st_min
-            # Ready to send next message
-            self._send_cf()
-        elif fs == WAIT:
-            # Do nothing
-            self._send_wf_count += 1        
-            if self._send_wf_count > self.max_wft:
-                self.logger.error('Wait frame overrun')
-        elif fs == OVERFLOW:
-            self.logger.error('Buffer overflow/abort')
-        else:
-            self.logger.error('Invalid flow status')
 
     def _end_send(self):
         self.logger.debug('Transfer complete!')
