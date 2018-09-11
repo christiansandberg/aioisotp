@@ -32,6 +32,7 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Scientific/Engineering"
     ],
+    python_requires=">=3.5",
     install_requires=["python-can>=2.3.0.dev0"],
     include_package_data=True
 )

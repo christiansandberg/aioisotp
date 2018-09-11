@@ -36,9 +36,8 @@ class ISOTPTransport(asyncio.Transport):
         self._send_wf_count = 0
         self._closing = False
         if loop is not None:
-            self._loop = loop
-        else:
-            self._loop = asyncio.get_event_loop()
+            loop = asyncio.get_event_loop()
+        self._loop = loop
         self._loop.call_soon(self._protocol.connection_made, self)
 
     def set_protocol(self, protocol):
@@ -62,31 +61,37 @@ class ISOTPTransport(asyncio.Transport):
     def get_write_buffer_size(self):
         return sum(len(buf) for buf in self._send_queue)
 
-    def feed_can_data(self, data):
+    def feed_data(self, data):
+        """Feed raw CAN data to transport.
+
+        :param bytearray data: CAN data
+        """
         pci_type = data[0] >> 4
         if pci_type == FLOW_CONTROL_FRAME:
-            self._feed_fc(data)
+            self._handle_fc(data)
         elif self._closing:
             pass
         elif pci_type == SINGLE_FRAME:
-            self._feed_sf(data)
+            self._handle_sf(data)
         elif pci_type == FIRST_FRAME:
-            self._feed_ff(data)
+            self._handle_ff(data)
         elif pci_type == CONSECUTIVE_FRAME:
-            self._feed_cf(data)
+            self._handle_cf(data)
 
     def _reset_recv(self):
         self._recv_buffer.clear()
         self._recv_seq_no = 1
         self._recv_block_count = 0
 
-    def _feed_sf(self, data):
+    def _handle_sf(self, data):
+        """Handle single frame."""
         self._reset_recv()
         self._recv_size = data[0] & 0xF
         self._recv_buffer.extend(data[1:])
         self._end_recv()
 
-    def _feed_ff(self, data):
+    def _handle_ff(self, data):
+        """Handle first frame."""
         self._reset_recv()
 
         size = ((data[0] & 0xF) << 8) + data[1]
@@ -102,7 +107,8 @@ class ISOTPTransport(asyncio.Transport):
 
         self._send_fc()
 
-    def _feed_cf(self, data):
+    def _handle_cf(self, data):
+        """Handle consecutive frame."""
         seq_no = data[0] & 0xF
         if seq_no != self._recv_seq_no & 0xF:
             raise ISOTPError('Wrong sequence number')
@@ -121,6 +127,7 @@ class ISOTPTransport(asyncio.Transport):
             self._recv_block_count = 0
 
     def _send_fc(self, fs=CONTINUE_TO_SEND):
+        """Send flow control frame."""
         self.logger.debug('Sending flow control frame')
 
         data = bytearray(3)
@@ -142,6 +149,7 @@ class ISOTPTransport(asyncio.Transport):
             self._start_send()
 
     def _start_send(self):
+        """Start sending frames."""
         buffer = self._send_queue[0]
         self.logger.debug('Starting transfer of %d bytes', len(buffer))
         if len(buffer) < 8:
@@ -150,6 +158,7 @@ class ISOTPTransport(asyncio.Transport):
             self._send_ff()
 
     def _send_sf(self):
+        """Send single frame."""
         buffer = self._send_queue[0]
         size = len(buffer)
 
@@ -161,6 +170,7 @@ class ISOTPTransport(asyncio.Transport):
         self._end_send()
 
     def _send_ff(self):
+        """Send first frame."""
         buffer = self._send_queue[0]
         size = len(buffer)
 
@@ -184,7 +194,8 @@ class ISOTPTransport(asyncio.Transport):
         self._send_seq_no = 1
         self._send_block_count = 0
 
-    def _feed_fc(self, data):
+    def _handle_fc(self, data):
+        """Handle flow control frame."""
         byte1, block_size, st_min = struct.unpack_from('BBB', data)
         fs = byte1 & 0xF
         if fs == CONTINUE_TO_SEND:
@@ -204,6 +215,7 @@ class ISOTPTransport(asyncio.Transport):
             self.logger.error('Invalid flow status')
 
     def _send_cf(self):
+        """Send consecutive frame."""
         buffer = self._send_queue[0]
         data = bytearray()
         data.append((CONSECUTIVE_FRAME << 4) + (self._send_seq_no & 0xF))
@@ -247,6 +259,7 @@ class ISOTPTransport(asyncio.Transport):
             self._loop.call_later(wait, self._send_cf)
 
     def _end_send(self):
+        """Clean up current transmission and possibly start next."""
         self.logger.debug('Transfer complete!')
         # Remove the transmission from the queue
         if self._send_queue:

@@ -33,6 +33,14 @@ Install from PyPI::
     $ pip install aioisotp
 
 
+Documentation
+-------------
+
+A basic documentation can be built using Sphinx::
+
+    $ python setup.py build_sphinx
+
+
 Quick start
 -----------
 
