@@ -16,7 +16,7 @@ class ISOTPNetwork(can.Listener):
     """A CAN bus with one or more ISO-TP connections.
 
     Rest of keyword arguments will be passed to the python-can bus creator.
-    
+
     :param can.BusABC bus:
         Existing python-can bus instance to use for sending.
     :param int block_size:
@@ -44,7 +44,8 @@ class ISOTPNetwork(can.Listener):
 
     def open(self):
         """Open connection to CAN bus and start receiving messages."""
-        self.bus = can.Bus(**self.config)
+        if self.bus is None:
+            self.bus = can.Bus(**self.config)
         self.notifier = can.Notifier(self.bus, [self], 0.1, loop=self._loop)
         return self
 
@@ -52,6 +53,7 @@ class ISOTPNetwork(can.Listener):
         """Disconnect from CAN bus."""
         self.notifier.stop()
         self.bus.shutdown()
+        self.bus = None
 
     def __enter__(self):
         return self
@@ -70,6 +72,8 @@ class ISOTPNetwork(can.Listener):
         Similar interface to the built-in
         :meth:`~asyncio.AbstractEventLoop.create_connection`.
 
+        This method is a *coroutine*.
+
         :param protocol_factory:
             Must be a callable returning a :class:`asyncio.Protocol` instance.
         :param int rxid:
@@ -81,7 +85,7 @@ class ISOTPNetwork(can.Listener):
             try:
                 return await make_socketcan_transport(
                     protocol_factory, self.config.get('channel'), rxid, txid,
-                    self.block_size, self.st_min, self.max_wft)
+                    self.block_size, self.st_min, self.max_wft, self._loop)
             except Exception as exc:
                 LOGGER.warning('Could not use SocketCAN ISO-TP: %s', exc)
 
@@ -104,6 +108,8 @@ class ISOTPNetwork(can.Listener):
         the writer is a :class:`~asyncio.StreamWriter` instance.
 
         Similar interface to the built-in :func:`~asyncio.open_connection`.
+
+        This method is a *coroutine*.
 
         :param int rxid:
             CAN ID to receive messages from.

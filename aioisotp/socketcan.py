@@ -11,7 +11,7 @@ except AttributeError:
 
 
 async def make_socketcan_transport(protocol_factory, channel,
-                                   rxid, txid, bs, st_min, max_wft):
+                                   rxid, txid, bs, st_min, max_wft, loop):
     sock = socket.socket(socket.AF_CAN, socket.SOCK_DGRAM, socket.CAN_ISOTP)
     sock.setblocking(False)
 
@@ -20,6 +20,5 @@ async def make_socketcan_transport(protocol_factory, channel,
 
     sock.bind((channel, rxid, txid))
 
-    loop = asyncio.get_event_loop()
     transport, protocol = await loop.create_connection(protocol_factory, sock=sock)
     return transport, protocol

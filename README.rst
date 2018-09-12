@@ -7,8 +7,8 @@ of connections.
 
 Raw CAN communication uses python-can_ which offers compatibility for many
 different CAN interfaces and operating systems.
-If SocketCAN is used on Python 3.7+, the transport is delegated to the kernel
-if possible for better timing performance.
+If SocketCAN `ISO-TP module`_ is loaded and Python 3.7+ is used, the transport is
+delegated to the kernel if possible for better timing performance.
 
 
 Why asynchronous?
@@ -112,6 +112,7 @@ or pyvit_ can be used to encode and decode payloads.
 
 .. _ISO-TP: https://en.wikipedia.org/wiki/ISO_15765-2
 .. _asyncio: https://docs.python.org/3/library/asyncio.html
-.. _python-can: https://github.com/hardbyte/python-can/
-.. _udsoncan: https://github.com/pylessard/python-udsoncan/
-.. _pyvit: https://github.com/linklayer/pyvit/
+.. _python-can: https://github.com/hardbyte/python-can
+.. _udsoncan: https://github.com/pylessard/python-udsoncan
+.. _pyvit: https://github.com/linklayer/pyvit
+.. _ISO-TP module: https://github.com/hartkopp/can-isotp
