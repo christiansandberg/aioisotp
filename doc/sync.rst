@@ -1,6 +1,13 @@
 Synchronous operation
 =====================
 
+Example
+-------
+
+.. literalinclude:: ../examples/sync_operation.py
+    :language: python
+
+
 API
 ---
 

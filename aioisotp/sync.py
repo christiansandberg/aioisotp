@@ -11,32 +11,18 @@ class SyncISOTPNetwork(ISOTPNetwork):
 
     An event loop will be run in a separate thread when :meth:`open` is called.
 
-    Rest of keyword arguments will be passed to the python-can bus creator.
-
-    :param can.BusABC bus:
-        Existing python-can bus instance to use for sending.
-    :param int block_size:
-        Block size for receiving frames. Set to 0 for unlimited block size.
-        May be tuned depending on CAN interface capabilities.
-    :param int st_min:
-        Minimum separation time between received frames.
-    :param int max_wft:
-        Maximum number of wait frames until signalling an error.
+    Arguments will be passed as-is to :class:`aioisotp.ISOTPNetwork` constructor.
     """
 
-    def __init__(self, bus=None, block_size=16, st_min=0, max_wft=0, **config):
+    def __init__(self, *args, **kwargs):
         loop = asyncio.new_event_loop()
         self._thread = None
-        super().__init__(bus, block_size, st_min, max_wft, loop, **config)
+        super().__init__(*args, loop=loop, **kwargs)
 
     def open(self):
-        self._thread = threading.Thread(target=self._task)
+        self._thread = threading.Thread(target=self._loop.run_forever)
         self._thread.start()
         return super().open()
-
-    def _task(self):
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_forever()
 
     def create_sync_connection(self, rxid, txid):
         """Create a connection for synchronous operation.
@@ -52,11 +38,11 @@ class SyncISOTPNetwork(ISOTPNetwork):
         :rtype: aioisotp.sync.SyncConnection
         """
         coro = self.create_connection(SyncConnection, rxid, txid)
-        if self._thread is None:
-            _, protocol = self._loop.run_until_complete(coro)
-        else:
+        if self._loop.is_running():
             fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
             _, protocol = fut.result(timeout=1)
+        else:
+            _, protocol = self._loop.run_until_complete(coro)
         return protocol
  
     def close(self):
@@ -71,9 +57,11 @@ class SyncConnection(asyncio.Protocol):
     :meth:`~aioisotp.SyncISOTPNetwork.create_sync_connection`
     """
 
-    def __init__(self):
+    def __init__(self, loop=None):
         self.queue = queue.Queue()
-        self._loop = asyncio.get_event_loop()
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self._loop = loop
 
     def connection_made(self, transport):
         self._transport = transport

@@ -2,8 +2,8 @@ import asyncio
 import logging
 import struct
 
-from .constants import *
-from .exceptions import ISOTPError
+from ..constants import *
+from ..exceptions import ISOTPError
 
 
 LOGGER = logging.getLogger(__name__)

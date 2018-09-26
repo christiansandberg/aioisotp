@@ -7,8 +7,14 @@ of connections.
 
 Raw CAN communication uses python-can_ which offers compatibility for many
 different CAN interfaces and operating systems.
+
 If SocketCAN `ISO-TP module`_ is loaded and Python 3.7+ is used, the transport is
 delegated to the kernel if possible for better timing performance.
+Use the 'socketcan' interface. If unsuccessful, raw CAN will be used as fallback.
+
+The isotpserver from `can-utils`_ can also be used to bridge a SocketCAN ISO-TP
+connection over TCP/IP.
+Use the 'isotpserver' interface and 'host:port' as channel.
 
 
 Why asynchronous?
@@ -44,6 +50,9 @@ A basic documentation can be built using Sphinx::
 Quick start
 -----------
 
+Here is an example of an echo server implemented using a callback based
+protocol and a client implemented as sequencial reader and writer streams.
+
 .. code:: python
 
     import asyncio
@@ -53,16 +62,17 @@ Quick start
     class EchoServer(asyncio.Protocol):
 
         def connection_made(self, transport):
-            self._transport = transport
+            self.transport = transport
 
         def data_received(self, data):
             # Echo back the same data
-            self._transport.write(data)
+            self.transport.write(data)
 
 
     async def main():
-        network = aioisotp.ISOTPNetwork(
-            channel='vcan0', bustype='virtual', receive_own_messages=True)
+        network = aioisotp.ISOTPNetwork('vcan0',
+                                        interface='virtual',
+                                        receive_own_messages=True)
         with network.open():
             # A server that uses a protocol
             transport, protocol = await network.create_connection(
@@ -116,3 +126,4 @@ or pyvit_ can be used to encode and decode payloads.
 .. _udsoncan: https://github.com/pylessard/python-udsoncan
 .. _pyvit: https://github.com/linklayer/pyvit
 .. _ISO-TP module: https://github.com/hartkopp/can-isotp
+.. _can-utils: https://github.com/linux-can/can-utils

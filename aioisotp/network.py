@@ -4,8 +4,9 @@ import logging
 
 import can
 
-from .transport import ISOTPTransport
-from .socketcan import make_socketcan_transport
+from .transports.userspace import ISOTPTransport
+from .transports.socketcan import make_socketcan_transport
+from .transports.isotpserver import make_isotpserver_transport
 from .constants import SINGLE_FRAME
 
 
@@ -17,8 +18,15 @@ class ISOTPNetwork(can.Listener):
 
     Rest of keyword arguments will be passed to the python-can bus creator.
 
+    :param channel:
+        CAN channel to use (e.g. 'can0', 0)
+    :param str interface:
+        Interface to use (e.g. 'socketcan', 'kvaser', 'vector', 'ixxat' etc.).
+        See the
+        `python-can manual <https://python-can.readthedocs.io/en/stable/configuration.html#interface-names>`__
+        for a complete list.
     :param can.BusABC bus:
-        Existing python-can bus instance to use for sending.
+        Existing python-can bus instance to use.
     :param int block_size:
         Block size for receiving frames. Set to 0 for unlimited block size.
         May be tuned depending on CAN interface capabilities.
@@ -30,13 +38,15 @@ class ISOTPNetwork(can.Listener):
         Event loop to use. Defaults to :func:`asyncio.get_event_loop`.
     """
 
-    def __init__(self, bus=None, block_size=16, st_min=0, max_wft=0,
-                 loop=None, **config):
-        self.bus = bus
+    def __init__(self, channel=None, interface=None, bus=None,
+                 block_size=16, st_min=0, max_wft=0, loop=None, **config):
         self.block_size = block_size
         self.st_min = st_min
         self.max_wft = max_wft
+        self.channel = channel
+        self.interface = interface
         self.config = config
+        self.bus = bus
         self._rxids = {}
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -44,15 +54,19 @@ class ISOTPNetwork(can.Listener):
 
     def open(self):
         """Open connection to CAN bus and start receiving messages."""
-        if self.bus is None:
-            self.bus = can.Bus(**self.config)
-        self.notifier = can.Notifier(self.bus, [self], 0.1, loop=self._loop)
+        if self.interface != 'isotpserver':
+            if self.bus is None:
+                self.bus = can.Bus(self.channel,
+                                bustype=self.interface,
+                                **self.config)
+            self.notifier = can.Notifier(self.bus, [self], 0.1, loop=self._loop)
         return self
 
     def close(self):
         """Disconnect from CAN bus."""
-        self.notifier.stop()
-        self.bus.shutdown()
+        if self.notifier is not None:
+            self.notifier.stop()
+            self.bus.shutdown()
         self.bus = None
 
     def __enter__(self):
@@ -81,13 +95,17 @@ class ISOTPNetwork(can.Listener):
         :param int txid:
             CAN ID to send messages to.
         """
-        if 'socketcan' in (self.config.get('bustype'), self.config.get('interface')):
+        if self.interface == 'socketcan':
             try:
                 return await make_socketcan_transport(
-                    protocol_factory, self.config.get('channel'), rxid, txid,
+                    protocol_factory, self.channel, rxid, txid,
                     self.block_size, self.st_min, self.max_wft, self._loop)
             except Exception as exc:
                 LOGGER.warning('Could not use SocketCAN ISO-TP: %s', exc)
+        elif self.interface == 'isotpserver':
+            host, port = self.channel.split(':')
+            return await make_isotpserver_transport(
+                protocol_factory, host, int(port), self._loop)
 
         return self._make_userspace_transport(protocol_factory, rxid, txid)
 

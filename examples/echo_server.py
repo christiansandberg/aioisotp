@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 import aioisotp
-import can
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -10,11 +9,11 @@ logging.basicConfig(level=logging.DEBUG)
 class EchoServer(asyncio.Protocol):
 
     def connection_made(self, transport):
-        self._transport = transport
+        self.transport = transport
 
     def data_received(self, data):
         # Echo back the same data
-        self._transport.write(data)
+        self.transport.write(data)
 
 
 async def main():
