@@ -7,6 +7,9 @@ class WrappedTransport(asyncio.WriteTransport):
     def __init__(self, transport):
         self._transport = transport
 
+    def get_extra_info(self, name, default=None):
+        return self._transport.get_extra_info(name, default)
+
     def write(self, payload):
         self._transport.write(b'<' + binascii.hexlify(payload) + b'>')
 
@@ -34,10 +37,14 @@ class WrappedProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         self._buffer.extend(data)
-        i = self._buffer.find(b'>')
-        if i != -1:
-            payload = binascii.unhexlify(self._buffer[1:i])
-            del self._buffer[:i]
+        while True:
+            start = self._buffer.find(b'<')
+            end = self._buffer.find(b'>')
+            if start == -1 or end == -1:
+                # No complete message in buffer
+                break
+            payload = binascii.unhexlify(self._buffer[start+1:end])
+            del self._buffer[:end+1]
             self._protocol.data_received(payload)
 
     def connection_lost(self, exc):

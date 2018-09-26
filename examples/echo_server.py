@@ -17,10 +17,14 @@ class EchoServer(asyncio.Protocol):
 
 
 async def main():
-    network = aioisotp.ISOTPNetwork(channel='vcan0', bustype='virtual', receive_own_messages=True)
+    network = aioisotp.ISOTPNetwork('vcan0',
+                                    interface='virtual',
+                                    receive_own_messages=True)
     with network.open():
         # Server uses protocol
-        transport, protocol = await network.create_connection(EchoServer, 0x1CDADCF9, 0x1CDAF9DC)
+        transport, protocol = await network.create_connection(EchoServer,
+                                                              0x1CDADCF9,
+                                                              0x1CDAF9DC)
 
         # Client uses streams
         reader, writer = await network.open_connection(0x1CDAF9DC, 0x1CDADCF9)
