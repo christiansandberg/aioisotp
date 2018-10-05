@@ -25,9 +25,10 @@ class WrappedTransport(asyncio.WriteTransport):
 
 class WrappedProtocol(asyncio.Protocol):
 
-    def __init__(self, protocol, con_made_fut):
+    def __init__(self, protocol, con_made_fut, loop):
         self._protocol = protocol
         self._con_made_fut = con_made_fut
+        self._loop = loop
         self._buffer = bytearray()
 
     def connection_made(self, transport):
@@ -45,7 +46,7 @@ class WrappedProtocol(asyncio.Protocol):
                 break
             payload = binascii.unhexlify(self._buffer[start+1:end])
             del self._buffer[:end+1]
-            self._protocol.data_received(payload)
+            self._loop.call_soon(self._protocol.data_received, payload)
 
     def connection_lost(self, exc):
         self._protocol.connection_lost(exc)

@@ -19,12 +19,22 @@ class ISOTPNetwork(can.Listener):
     Rest of keyword arguments will be passed to the python-can bus creator.
 
     :param channel:
-        CAN channel to use (e.g. 'can0', 0)
+        CAN channel to use (e.g. 'can0', 0).
+        Value depends on the chosen interface.
     :param str interface:
         Interface to use (e.g. 'socketcan', 'kvaser', 'vector', 'ixxat' etc.).
         See the
         `python-can manual <https://python-can.readthedocs.io/en/stable/configuration.html#interface-names>`__
         for a complete list.
+
+        If the 'socketcan' interface is used, the library will attempt to use
+        the `isotp module <https://github.com/hartkopp/can-isotp>`__, but
+        falling back to raw CAN.
+
+        Another special interface is 'isotpserver' which will allow remote
+        operation using `can-utils <https://github.com/linux-can/can-utils>`__
+        isotpserver utility.
+        The *channel* parameter should be set to `'host:port'`.
     :param can.BusABC bus:
         Existing python-can bus instance to use.
     :param int block_size:
@@ -84,7 +94,7 @@ class ISOTPNetwork(can.Listener):
         The transport will be a :class:`asyncio.WriteTransport` instance.
 
         Similar interface to the built-in
-        :meth:`~asyncio.AbstractEventLoop.create_connection`.
+        :meth:`~asyncio.loop.create_connection`.
 
         This method is a *coroutine*.
 
@@ -101,7 +111,7 @@ class ISOTPNetwork(can.Listener):
                     protocol_factory, self.channel, rxid, txid,
                     self.block_size, self.st_min, self.max_wft, self._loop)
             except Exception as exc:
-                LOGGER.warning('Could not use SocketCAN ISO-TP: %s', exc)
+                LOGGER.info('Could not use SocketCAN ISO-TP: %s', exc)
         elif self.interface == 'isotpserver':
             host, port = self.channel.split(':')
             return await make_isotpserver_transport(

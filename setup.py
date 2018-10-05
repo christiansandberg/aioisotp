@@ -33,6 +33,6 @@ setup(
         "Topic :: Scientific/Engineering"
     ],
     python_requires=">=3.5",
-    install_requires=["python-can>=2.3.0.a1"],
+    install_requires=["python-can~=3.0"],
     include_package_data=True
 )
