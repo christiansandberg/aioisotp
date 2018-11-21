@@ -2,6 +2,11 @@
 Start server::
 
     $ isotpserver -l 12345 -s 456 -d 123 vcan0
+
+Receive and send::
+
+    $ isotprecv -s 123 -d 456 vcan0
+    $ isotpsend -s 123 -d 456 -D 32 vcan0
 """
 
 import asyncio
@@ -23,6 +28,8 @@ async def main():
 
     while True:
         payload = await reader.read(4095)
+        if not payload:
+            break
         print(binascii.hexlify(payload))
 
 

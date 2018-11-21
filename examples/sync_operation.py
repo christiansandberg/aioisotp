@@ -6,7 +6,7 @@ import aioisotp
 logging.basicConfig(level=logging.DEBUG)
 
 
-network = aioisotp.SyncISOTPNetwork(channel='vcan0', bustype='virtual', receive_own_messages=True)
+network = aioisotp.SyncISOTPNetwork(channel='vcan0', interface='virtual', receive_own_messages=True)
 server = network.create_sync_connection(0x456, 0x123)
 with network.open():
     client = network.create_sync_connection(0x123, 0x456)

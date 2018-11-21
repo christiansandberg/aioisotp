@@ -38,7 +38,7 @@ class ISOTPTransport(asyncio.Transport):
         if loop is not None:
             loop = asyncio.get_event_loop()
         self._loop = loop
-        self._loop.call_soon(self._protocol.connection_made, self)
+        self._protocol.connection_made(self)
 
     def set_protocol(self, protocol):
         self._protocol = protocol
@@ -203,7 +203,7 @@ class ISOTPTransport(asyncio.Transport):
             self._send_block_size = block_size
             self._send_st_min = st_min
             # Ready to send next message
-            self._send_cf()
+            self._send_cfs()
         elif fs == WAIT:
             # Do nothing
             self._send_wf_count += 1        
@@ -213,6 +213,13 @@ class ISOTPTransport(asyncio.Transport):
             self.logger.error('Buffer overflow/abort')
         else:
             self.logger.error('Invalid flow status')
+
+    def _send_cfs(self):
+        send_more = self._send_cf()
+        if send_more:
+            wait = self._get_wait_time()
+            # Call ourselves after the wait
+            self._loop.call_later(wait, self._send_cfs)
 
     def _send_cf(self):
         """Send consecutive frame."""
@@ -230,33 +237,36 @@ class ISOTPTransport(asyncio.Transport):
         if not buffer:
             # Last message sent, clean up
             self._end_send()
-
+            return False
         elif self._send_block_count == self._send_block_size:
             self._send_block_count = 0
             self._send_wf_count = 0
             self.logger.debug('Waiting for flow control frame...')
-
+            return False
         else:
-            # Send next message
-            if self._send_st_min == 0:
-                wait = 0
-            elif self._send_st_min < 0x80:
-                wait = self._send_st_min * 1e-3
-            elif 0xF1 <= self._send_st_min <= 0xF9:
-                wait = (self._send_st_min - 0xF0) * 1e-6
-            else:
-                wait = 0.127
+            # Send another message
+            return True
 
-            # Normally the event loop does not bother waiting for tasks
-            # scheduled closer in time than the internal clock resolution.
-            # In order to honor the requested minimum separation time, we make
-            # sure the wait is long enough to not be skipped.
-            # On Windows this is usually ~16 ms!
-            if wait and hasattr(self._loop, '_clock_resolution'):
-                wait = max(wait, self._loop._clock_resolution + 0.001)
+    def _get_wait_time(self):
+        """Calculate the time in seconds between each consecutive message."""
+        if self._send_st_min == 0:
+            wait = 0
+        elif self._send_st_min < 0x80:
+            wait = self._send_st_min * 1e-3
+        elif 0xF1 <= self._send_st_min <= 0xF9:
+            wait = (self._send_st_min - 0xF0) * 1e-6
+        else:
+            wait = 0.127
 
-            # Call ourselves after the wait
-            self._loop.call_later(wait, self._send_cf)
+        # Normally the event loop does not bother waiting for tasks
+        # scheduled closer in time than the internal clock resolution.
+        # In order to honor the requested minimum separation time, we make
+        # sure the wait is long enough to not be skipped.
+        # On Windows this is usually ~16 ms!
+        if wait and hasattr(self._loop, '_clock_resolution'):
+            wait = max(wait, self._loop._clock_resolution + 0.001)
+
+        return wait
 
     def _end_send(self):
         """Clean up current transmission and possibly start next."""

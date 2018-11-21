@@ -20,9 +20,14 @@ class SyncISOTPNetwork(ISOTPNetwork):
         super().__init__(*args, loop=loop, **kwargs)
 
     def open(self):
-        self._thread = threading.Thread(target=self._loop.run_forever)
+        self._thread = threading.Thread(target=self._task)
+        self._thread.daemon = True
         self._thread.start()
         return super().open()
+
+    def _task(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
 
     def create_sync_connection(self, rxid, txid):
         """Create a connection for synchronous operation.
@@ -37,12 +42,13 @@ class SyncISOTPNetwork(ISOTPNetwork):
             :meth:`~aioisotp.sync.SyncConnection.send` method.
         :rtype: aioisotp.sync.SyncConnection
         """
-        coro = self.create_connection(SyncConnection, rxid, txid)
+        protocol = SyncConnection(self._loop)
+        coro = self.create_connection(lambda: protocol, rxid, txid)
         if self._loop.is_running():
-            fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-            _, protocol = fut.result(timeout=1)
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
         else:
-            _, protocol = self._loop.run_until_complete(coro)
+            self._loop.run_until_complete(coro)
+        protocol.wait_connected()
         return protocol
  
     def close(self):
@@ -59,12 +65,17 @@ class SyncConnection(asyncio.Protocol):
 
     def __init__(self, loop=None):
         self.queue = queue.Queue()
+        self._connected_event = threading.Event()
         if loop is None:
             loop = asyncio.get_event_loop()
         self._loop = loop
 
+    def wait_connected(self):
+        self._connected_event.wait(1)
+
     def connection_made(self, transport):
         self._transport = transport
+        self._connected_event.set()
 
     def data_received(self, payload):
         self.queue.put_nowait(payload)
