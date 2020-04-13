@@ -44,15 +44,19 @@ class ISOTPNetwork(can.Listener):
         Minimum separation time between received frames.
     :param int max_wft:
         Maximum number of wait frames until signalling an error.
+    :param int tx_padding:
+        Used to fill the bytes of the sent data, `None` means no padding
     :param asyncio.AbstractEventLoop loop:
         Event loop to use. Defaults to :func:`asyncio.get_event_loop`.
     """
 
     def __init__(self, channel=None, interface=None, bus=None,
-                 block_size=16, st_min=0, max_wft=0, loop=None, **config):
+                 block_size=16, st_min=0, max_wft=0, tx_padding=0xcc,
+                 loop=None, **config):
         self.block_size = block_size
         self.st_min = st_min
         self.max_wft = max_wft
+        self.tx_padding = tx_padding
         self.channel = channel
         self.interface = interface
         self.config = config
@@ -168,6 +172,9 @@ class ISOTPNetwork(can.Listener):
         self.send_raw(txid, data)
 
     def send_raw(self, txid, data):
+        if self.tx_padding is not None:
+            data.extend(bytearray([self.tx_padding & 0xff] * (8 - len(data))))
+        
         LOGGER.debug('Sending raw frame: ID 0x%X - %s',
                      txid, binascii.hexlify(data).decode())
         msg = can.Message(arbitration_id=txid,
